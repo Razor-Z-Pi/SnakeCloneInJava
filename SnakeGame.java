@@ -1,148 +1,208 @@
-import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
+import java.awt.event.*;
+import java.util.ArrayList;
 import java.util.Random;
+import javax.swing.*;
 
-public class SnakeGame extends JFrame {
-    private static final int TILE_SIZE = 20;
-    private static final int WIDTH = 20;
-    private static final int HEIGHT = 20;
-    private static final int INITIAL_LENGTH = 3;
+public class SnakeGame extends JPanel implements ActionListener, KeyListener {
+    private class Tile {
+        int x;
+        int y;
 
-    private int length;  // длина змейки
-    private int[] x, y; // координаты сегментов змейки
-    private int foodX, foodY; // координаты еды
-    private char direction; // направление движения
-    private boolean running;
+        Tile(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+    }  
 
-    public SnakeGame() {
-        setTitle("Змейка");
-        setSize(WIDTH * TILE_SIZE, HEIGHT * TILE_SIZE);
-        setResizable(false);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+    int boardWidth;
+    int boardHeight;
+    int tileSize = 25;
+    
+    // Змейка
+    Tile snakeHead;
+    ArrayList<Tile> snakeBody;
 
-        x = new int[WIDTH * HEIGHT];
-        y = new int[WIDTH * HEIGHT];
-        length = INITIAL_LENGTH;
-        direction = 'R';
-        running = true;
+    // Еда
+    Tile food;
+    Random random;
 
+    // Поля для лигики игры
+    int velocityX;
+    int velocityY;
+    Timer gameLoop;
+
+    boolean gameOver = false;
+
+    SnakeGame(int boardWidth, int boardHeight) {
+        this.boardWidth = boardWidth;
+        this.boardHeight = boardHeight;
+        setPreferredSize(new Dimension(this.boardWidth, this.boardHeight));
+        setBackground(Color.black);
+        addKeyListener(this);
+        setFocusable(true);
+        startNewGame();
+	}
+    
+    private void startNewGame() {
+        snakeHead = new Tile(5, 5);
+        snakeBody = new ArrayList<Tile>();
+
+        food = new Tile(10, 10);
+        random = new Random();
         placeFood();
 
-        addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                switch (e.getKeyCode()) {
-                    case KeyEvent.VK_UP:
-                        if (direction != 'D') direction = 'U';
-                        break;
-                    case KeyEvent.VK_DOWN:
-                        if (direction != 'U') direction = 'D';
-                        break;
-                    case KeyEvent.VK_LEFT:
-                        if (direction != 'R') direction = 'L';
-                        break;
-                    case KeyEvent.VK_RIGHT:
-                        if (direction != 'L') direction = 'R';
-                        break;
-                }
-            }
-        });
-
-        Timer timer = new Timer(100, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (running) {
-                    move();
-                    checkCollision();
-                }
-                repaint();
-            }
-        });
-        timer.start();
-
-        setVisible(true);
+        velocityX = 1;
+        velocityY = 0;
+        
+        // Игровой таймер
+        gameLoop = new Timer(100, this); // Время запуска таймера, миллисекунды между кадрами
+        gameLoop.start();
+        gameOver = false;
     }
+    
+    public void paintComponent(Graphics g) {
+		super.paintComponent(g);
+		draw(g);
+	}
 
-    private void placeFood() {
-        foodX = new Random().nextInt(WIDTH);
-        foodY = new Random().nextInt(HEIGHT);
-    }
-
-    private void move() {
-        for (int i = length; i > 0; i--) {
-            x[i] = x[i - 1];
-            y[i] = y[i - 1];
-        }
-        switch (direction) {
-            case 'U':
-                y[0]--;
-                break;
-            case 'D':
-                y[0]++;
-                break;
-            case 'L':
-                x[0]--;
-                break;
-            case 'R':
-                x[0]++;
-                break;
+	public void draw(Graphics g) {
+        // Сетка
+        for(int i = 0; i < boardWidth/tileSize; i++) {
+            // (x1, y1, x2, y2)
+            g.drawLine(i * tileSize, 0, i * tileSize, boardHeight);
+            g.drawLine(0, i * tileSize, boardWidth, i * tileSize); 
         }
 
-        // Проверка на поедание еды
-        if (x[0] == foodX && y[0] == foodY) {
-            length++;
+        // Еда
+        g.setColor(Color.red);      
+        g.fill3DRect(food.x * tileSize, food.y * tileSize, tileSize, tileSize, true);
+
+        // Змейк, её голова
+        g.setColor(Color.green);
+        g.fill3DRect(snakeHead.x * tileSize, snakeHead.y * tileSize, tileSize, tileSize, true);
+        
+        // Тело змейки
+        for (int i = 0; i < snakeBody.size(); i++) {
+            Tile snakePart = snakeBody.get(i);
+            g.fill3DRect(snakePart.x * tileSize, snakePart.y * tileSize, tileSize, tileSize, true);
+		}
+
+        //Очки
+        g.setFont(new Font("Arial", Font.PLAIN, 16));
+        if (gameOver) {
+            g.setColor(Color.red);
+            g.drawString("Конец игры (нажмите на Enter, чтобы начать новую игру!): " + String.valueOf(snakeBody.size()), tileSize - 16, tileSize);
+        }
+        else {
+            g.drawString("Очки: " + String.valueOf(snakeBody.size()), tileSize - 16, tileSize);
+        }
+	}
+
+    public void placeFood() {
+        food.x = random.nextInt(boardWidth / tileSize);
+		food.y = random.nextInt(boardHeight / tileSize);
+	}
+
+    public void move() {
+        // Поедание еды
+        if (collision(snakeHead, food)) {
+            snakeBody.add(new Tile(food.x, food.y));
             placeFood();
         }
-    }
 
-    private void checkCollision() {
-        // Проверка столкновения со стенами
-        if (x[0] < 0 || x[0] >= WIDTH || y[0] < 0 || y[0] >= HEIGHT) {
-            running = false;
-        }
-
-        // Проверка столкновения с собой
-        for (int i = length; i > 0; i--) {
-            if (x[0] == x[i] && y[0] == y[i]) {
-                running = false;
+        // Движение тела змейки
+        for (int i = snakeBody.size() - 1; i >= 0; i--) {
+            Tile snakePart = snakeBody.get(i);
+            if (i == 0) { // Перед головой
+                snakePart.x = snakeHead.x;
+                snakePart.y = snakeHead.y;
+            }
+            else {
+                Tile prevSnakePart = snakeBody.get(i - 1);
+                snakePart.x = prevSnakePart.x;
+                snakePart.y = prevSnakePart.y;
             }
         }
+        // Перемещение головы змеи
+        snakeHead.x += velocityX;
+        snakeHead.y += velocityY;
+
+        // Условие окончание игры
+        for (int i = 0; i < snakeBody.size(); i++) {
+            Tile snakePart = snakeBody.get(i);
+
+            // Столкновление головы змейки
+            if (collision(snakeHead, snakePart)) {
+                gameOver = true;
+            }
+        }
+
+        if (snakeHead.x * tileSize < 0 || snakeHead.x * tileSize > boardWidth || // Пересекает левую или правую границу
+            snakeHead.y * tileSize < 0 || snakeHead.y * tileSize > boardHeight ) { // Пересекается верхняя граница или нижняя граница
+            gameOver = true;
+        }
+    }
+
+    public boolean collision(Tile tile1, Tile tile2) {
+        return tile1.x == tile2.x && tile1.y == tile2.y;
     }
 
     @Override
-    public void paint(Graphics g) {
-        super.paint(g);
-        g.setColor(Color.BLACK);
-        g.fillRect(0, 0, WIDTH * TILE_SIZE, HEIGHT * TILE_SIZE);
+    public void actionPerformed(ActionEvent e) { // Вызывается каждые x миллисекунд таймером gameLoop
+        move();
+        repaint();
+        if (gameOver) {
+            gameLoop.stop();
+        }
+    }  
 
-        // Отрисовка еды
-        g.setColor(Color.RED);
-        g.fillRect(foodX * TILE_SIZE, foodY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    @Override
+    public void keyPressed(KeyEvent e) {
 
-        // Отрисовка змейки
-        g.setColor(Color.GREEN);
-        for (int i = 0; i < length; i++) {
-            g.fillRect(x[i] * TILE_SIZE, y[i] * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (e.getKeyCode() == KeyEvent.VK_ENTER && gameOver) {
+            startNewGame(); // Перезапуск игры
         }
 
-        // Проверка состояния игры
-        if (!running) {
-            showGameOver(g);
+        if (e.getKeyCode() == KeyEvent.VK_UP && velocityY != 1) {
+            velocityX = 0;
+            velocityY = -1;
+        }
+        else if (e.getKeyCode() == KeyEvent.VK_DOWN && velocityY != -1) {
+            velocityX = 0;
+            velocityY = 1;
+        }
+        else if (e.getKeyCode() == KeyEvent.VK_LEFT && velocityX != 1) {
+            velocityX = -1;
+            velocityY = 0;
+        }
+        else if (e.getKeyCode() == KeyEvent.VK_RIGHT && velocityX != -1) {
+            velocityX = 1;
+            velocityY = 0;
         }
     }
 
-    private void showGameOver(Graphics g) {
-        g.setColor(Color.WHITE);
-        g.setFont(new Font("Helvetica", Font.BOLD, 30));
-        g.drawString("Game Over", WIDTH * TILE_SIZE / 4, HEIGHT * TILE_SIZE / 2);
-    }
+    // Оставил чтобы класс не ругался
+    @Override
+    public void keyTyped(KeyEvent e) {}
 
-    public static void main(String[] args) {
-        new SnakeGame();
+    @Override
+    public void keyReleased(KeyEvent e) {}
+
+    public static void main(String[] args) throws Exception {
+        int boardWidth = 600;
+        int boardHeight = boardWidth;
+
+        JFrame frame = new JFrame("Змейка-клон-на-Java!!!");
+        frame.setVisible(true);
+	    frame.setSize(boardWidth, boardHeight);
+        frame.setLocationRelativeTo(null);
+        frame.setResizable(false);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        SnakeGame snakeGame = new SnakeGame(boardWidth, boardHeight);
+        frame.add(snakeGame);
+        frame.pack();
+        snakeGame.requestFocus();
     }
 }
